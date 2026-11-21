@@ -3,7 +3,7 @@ streamlit
 streamlit-webrtc
 torch
 torchvision
-opencv-python-headless
+opencv-contrib-python-headless==4.11.0.86
 av
-numpy
+numpy==1.26.4
 Pillow
