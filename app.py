@@ -15,7 +15,6 @@ from streamlit_webrtc import webrtc_streamer, WebRtcMode
 
 st.set_page_config(
     page_title="Face Mask Detection System",
-    page_icon=None,
     layout="wide"
 )
 
@@ -37,23 +36,6 @@ st.markdown("""
         color: #6B7280;
         font-size: 16px;
         margin-bottom: 30px;
-    }
-
-    .result-card {
-        padding: 18px;
-        border-radius: 10px;
-        text-align: center;
-        margin-top: 15px;
-    }
-
-    .with-mask {
-        background-color: #DCFCE7;
-        color: #166534;
-    }
-
-    .without-mask {
-        background-color: #FEE2E2;
-        color: #991B1B;
     }
 
     .footer {
@@ -92,8 +74,8 @@ device = torch.device("cpu")
 def load_model():
 
     checkpoint = torch.load(
-        "best_mask_model.pth",
-        map_location=device,
+        "best_mask_model_fp16.pth",
+        map_location="cpu",
         weights_only=True
     )
 
@@ -108,12 +90,13 @@ def load_model():
         checkpoint["model_state_dict"]
     )
 
+    # Convert model parameters to FP32 for CPU inference
+    model = model.float()
+
     model.to(device)
     model.eval()
 
-    class_names = checkpoint["classes"]
-
-    return model, class_names
+    return model, checkpoint["classes"]
 
 
 try:
@@ -144,7 +127,7 @@ face_detector = cv2.CascadeClassifier(
 )
 
 
-# Mask Classification Function
+# Mask Classification
 
 def predict_mask(face):
 
@@ -237,9 +220,7 @@ def detect_mask(frame):
 
 def video_frame_callback(frame):
 
-    image = frame.to_ndarray(
-        format="bgr24"
-    )
+    image = frame.to_ndarray(format="bgr24")
 
     processed_image = detect_mask(image)
 
@@ -256,19 +237,14 @@ with st.sidebar:
     st.header("Project Information")
 
     st.write("Model Architecture: ResNet18")
-
-    st.write("Deep Learning Framework: PyTorch")
-
+    st.write("Framework: PyTorch")
     st.write("Face Detection: OpenCV")
-
-    st.write("Application Framework: Streamlit")
+    st.write("Interface: Streamlit")
 
     st.divider()
 
     st.write("Classification Categories")
-
     st.write("1. With Mask")
-
     st.write("2. Without Mask")
 
 
@@ -287,8 +263,8 @@ with camera_tab:
     st.subheader("Real-Time Face Mask Detection")
 
     st.write(
-        "Start the camera to detect faces and "
-        "classify mask usage in real time."
+        "Start the camera and allow browser permission "
+        "to perform real-time face mask detection."
     )
 
     webrtc_streamer(
