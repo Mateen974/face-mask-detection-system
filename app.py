@@ -1,18 +1,20 @@
 
+import os
 import streamlit as st
 import torch
 import torch.nn as nn
 import cv2
 import av
 import numpy as np
-import os
 
 from PIL import Image
 from torchvision import models, transforms
 from streamlit_webrtc import webrtc_streamer, WebRtcMode
 
 
+# --------------------------------------------------
 # Application Configuration
+# --------------------------------------------------
 
 st.set_page_config(
     page_title="Face Mask Detection System",
@@ -20,7 +22,9 @@ st.set_page_config(
 )
 
 
-# Application Styling
+# --------------------------------------------------
+# Custom Styling
+# --------------------------------------------------
 
 st.markdown("""
 <style>
@@ -45,14 +49,23 @@ st.markdown("""
         font-size: 13px;
         padding: 20px;
     }
+
+    .stTabs [data-baseweb="tab"] {
+        font-size: 15px;
+        font-weight: 600;
+    }
 </style>
 """, unsafe_allow_html=True)
 
 
+# --------------------------------------------------
 # Application Header
+# --------------------------------------------------
 
 st.markdown(
-    '<div class="main-title">Face Mask Detection System</div>',
+    '<div class="main-title">'
+    'Face Mask Detection System'
+    '</div>',
     unsafe_allow_html=True
 )
 
@@ -64,24 +77,35 @@ st.markdown(
 )
 
 
+# --------------------------------------------------
 # Device Configuration
+# --------------------------------------------------
 
 device = torch.device("cpu")
 
+torch.set_num_threads(2)
 
-# Load Trained Model
+
+# --------------------------------------------------
+# Model Loading
+# --------------------------------------------------
 
 @st.cache_resource
 def load_model():
 
+    base_dir = os.path.dirname(
+        os.path.abspath(__file__)
+    )
+
     model_path = os.path.join(
-        os.path.dirname(os.path.abspath(__file__)),
+        base_dir,
         "best_mask_model_fp16.pth"
     )
 
-    if not os.path.exists(model_path):
+    if not os.path.isfile(model_path):
         raise FileNotFoundError(
-            f"Model file not found: {model_path}"
+            "Trained model file was not found. "
+            "Check the model filename in GitHub."
         )
 
     checkpoint = torch.load(
@@ -90,7 +114,9 @@ def load_model():
         weights_only=True
     )
 
-    model = models.resnet18(weights=None)
+    model = models.resnet18(
+        weights=None
+    )
 
     model.fc = nn.Sequential(
         nn.Dropout(0.3),
@@ -105,22 +131,34 @@ def load_model():
     model.to(device)
     model.eval()
 
-    return model, checkpoint["classes"]
+    classes = checkpoint["classes"]
+
+    return model, classes
 
 
 try:
+
     model, classes = load_model()
 
 except Exception as error:
-    st.error(f"Unable to load trained model: {error}")
+
+    st.error(
+        f"Unable to load trained model: {error}"
+    )
+
     st.stop()
 
 
+# --------------------------------------------------
 # Image Preprocessing
+# --------------------------------------------------
 
 transform = transforms.Compose([
+
     transforms.Resize((224, 224)),
+
     transforms.ToTensor(),
+
     transforms.Normalize(
         mean=[0.485, 0.456, 0.406],
         std=[0.229, 0.224, 0.225]
@@ -128,20 +166,32 @@ transform = transforms.Compose([
 ])
 
 
+# --------------------------------------------------
 # Face Detection Model
+# --------------------------------------------------
 
-cascade_path = (
-    cv2.data.haarcascades
-    + "haarcascade_frontalface_default.xml"
+cascade_path = os.path.join(
+    cv2.data.haarcascades,
+    "haarcascade_frontalface_default.xml"
 )
 
-face_detector = cv2.CascadeClassifier(cascade_path)
+face_detector = cv2.CascadeClassifier(
+    cascade_path
+)
 
 if face_detector.empty():
-    st.error("Unable to initialize face detection model.")
+
+    st.error(
+        "OpenCV face detection classifier "
+        "could not be initialized."
+    )
+
     st.stop()
 
-# Mask Classification
+
+# --------------------------------------------------
+# Mask Prediction Function
+# --------------------------------------------------
 
 def predict_mask(face):
 
@@ -150,11 +200,15 @@ def predict_mask(face):
         cv2.COLOR_BGR2RGB
     )
 
-    pil_image = Image.fromarray(rgb_face)
+    pil_image = Image.fromarray(
+        rgb_face
+    )
 
     input_tensor = transform(
         pil_image
-    ).unsqueeze(0).to(device)
+    ).unsqueeze(0)
+
+    input_tensor = input_tensor.to(device)
 
     with torch.inference_mode():
 
@@ -165,15 +219,24 @@ def predict_mask(face):
             dim=1
         )
 
-        confidence, prediction = probabilities.max(dim=1)
+        confidence, prediction = probabilities.max(
+            dim=1
+        )
 
-    predicted_class = classes[prediction.item()]
-    confidence_score = confidence.item() * 100
+    predicted_class = classes[
+        prediction.item()
+    ]
+
+    confidence_score = (
+        confidence.item() * 100
+    )
 
     return predicted_class, confidence_score
 
 
-# Face Detection and Prediction
+# --------------------------------------------------
+# Face Detection and Classification
+# --------------------------------------------------
 
 def detect_mask(frame):
 
@@ -191,22 +254,35 @@ def detect_mask(frame):
 
     for (x, y, w, h) in faces:
 
-        face = frame[y:y+h, x:x+w]
+        face = frame[
+            y:y+h,
+            x:x+w
+        ]
 
         if face.size == 0:
             continue
 
-        predicted_class, confidence = predict_mask(face)
+        predicted_class, confidence = predict_mask(
+            face
+        )
 
         if predicted_class == "with_mask":
 
             color = (0, 180, 0)
-            label = f"With Mask: {confidence:.2f}%"
+
+            label = (
+                f"With Mask: {confidence:.2f}%"
+            )
 
         else:
 
             color = (0, 0, 220)
-            label = f"Without Mask: {confidence:.2f}%"
+
+            label = (
+                f"Without Mask: {confidence:.2f}%"
+            )
+
+        # Draw face bounding box
 
         cv2.rectangle(
             frame,
@@ -215,6 +291,8 @@ def detect_mask(frame):
             color,
             2
         )
+
+        # Display prediction label
 
         cv2.putText(
             frame,
@@ -229,13 +307,19 @@ def detect_mask(frame):
     return frame
 
 
-# Live Camera Processing
+# --------------------------------------------------
+# Live Camera Callback
+# --------------------------------------------------
 
 def video_frame_callback(frame):
 
-    image = frame.to_ndarray(format="bgr24")
+    image = frame.to_ndarray(
+        format="bgr24"
+    )
 
-    processed_image = detect_mask(image)
+    processed_image = detect_mask(
+        image
+    )
 
     return av.VideoFrame.from_ndarray(
         processed_image,
@@ -243,64 +327,104 @@ def video_frame_callback(frame):
     )
 
 
+# --------------------------------------------------
 # Sidebar
+# --------------------------------------------------
 
 with st.sidebar:
 
     st.header("Project Information")
 
-    st.write("Model Architecture: ResNet18")
-    st.write("Framework: PyTorch")
-    st.write("Face Detection: OpenCV")
-    st.write("Interface: Streamlit")
+    st.write(
+        "Model Architecture: ResNet18"
+    )
+
+    st.write(
+        "Deep Learning Framework: PyTorch"
+    )
+
+    st.write(
+        "Face Detection: OpenCV"
+    )
+
+    st.write(
+        "Application Framework: Streamlit"
+    )
 
     st.divider()
 
-    st.write("Classification Categories")
-    st.write("1. With Mask")
-    st.write("2. Without Mask")
+    st.subheader("Classification Categories")
+
+    st.write("With Mask")
+
+    st.write("Without Mask")
 
 
-# Main Application Tabs
+# --------------------------------------------------
+# Application Tabs
+# --------------------------------------------------
 
 camera_tab, upload_tab = st.tabs([
+
     "Live Camera Detection",
+
     "Image Classification"
+
 ])
 
 
-# Live Camera Section
+# --------------------------------------------------
+# Live Camera Detection
+# --------------------------------------------------
 
 with camera_tab:
 
-    st.subheader("Real-Time Face Mask Detection")
+    st.subheader(
+        "Real-Time Face Mask Detection"
+    )
 
     st.write(
-        "Start the camera and allow browser permission "
-        "to perform real-time face mask detection."
+        "Start the camera and allow browser "
+        "permission to perform real-time detection."
     )
 
     webrtc_streamer(
+
         key="face-mask-detection",
+
         mode=WebRtcMode.SENDRECV,
+
         video_frame_callback=video_frame_callback,
+
         media_stream_constraints={
             "video": True,
             "audio": False
         },
+
         async_processing=True
     )
 
 
-# Image Upload Section
+# --------------------------------------------------
+# Image Upload Classification
+# --------------------------------------------------
 
 with upload_tab:
 
-    st.subheader("Image-Based Mask Detection")
+    st.subheader(
+        "Image-Based Mask Detection"
+    )
 
     uploaded_file = st.file_uploader(
+
         "Upload an image",
-        type=["jpg", "jpeg", "png"]
+
+        type=[
+            "jpg",
+            "jpeg",
+            "png"
+        ]
+
     )
 
     if uploaded_file is not None:
@@ -309,14 +433,18 @@ with upload_tab:
             uploaded_file
         ).convert("RGB")
 
-        image_array = np.array(image)
+        image_array = np.array(
+            image
+        )
 
         frame = cv2.cvtColor(
             image_array,
             cv2.COLOR_RGB2BGR
         )
 
-        result = detect_mask(frame)
+        result = detect_mask(
+            frame
+        )
 
         result_image = cv2.cvtColor(
             result,
@@ -325,19 +453,21 @@ with upload_tab:
 
         st.image(
             result_image,
-            caption="Classification Result",
+            caption="Face Mask Detection Result",
             use_container_width=True
         )
 
 
+# --------------------------------------------------
 # Footer
+# --------------------------------------------------
 
 st.divider()
 
 st.markdown(
     '<div class="footer">'
     'Face Mask Detection System | '
-    'Powered by PyTorch, ResNet18 and OpenCV'
+    'PyTorch | ResNet18 | OpenCV | Streamlit'
     '</div>',
     unsafe_allow_html=True
 )
