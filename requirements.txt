@@ -3,8 +3,7 @@ streamlit
 streamlit-webrtc
 torch
 torchvision
-mediapipe==0.10.21
-opencv-python-headless==4.11.0.86
+opencv-python-headless
 av
-numpy==1.26.4
+numpy
 Pillow
