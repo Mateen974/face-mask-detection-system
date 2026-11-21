@@ -130,18 +130,16 @@ transform = transforms.Compose([
 
 # Face Detection Model
 
-cascade_path = os.path.join(
-    os.path.dirname(cv2.__file__),
-    "data",
-    "haarcascade_frontalface_default.xml"
+cascade_path = (
+    cv2.data.haarcascades
+    + "haarcascade_frontalface_default.xml"
 )
 
 face_detector = cv2.CascadeClassifier(cascade_path)
 
 if face_detector.empty():
-    st.error("OpenCV face detection classifier could not be loaded.")
+    st.error("Unable to initialize face detection model.")
     st.stop()
-
 
 # Mask Classification
 
