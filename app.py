@@ -5,6 +5,7 @@ import torch.nn as nn
 import cv2
 import av
 import numpy as np
+import os
 
 from PIL import Image
 from torchvision import models, transforms
@@ -73,8 +74,18 @@ device = torch.device("cpu")
 @st.cache_resource
 def load_model():
 
+    model_path = os.path.join(
+        os.path.dirname(os.path.abspath(__file__)),
+        "best_mask_model_fp16.pth"
+    )
+
+    if not os.path.exists(model_path):
+        raise FileNotFoundError(
+            f"Model file not found: {model_path}"
+        )
+
     checkpoint = torch.load(
-        "best_mask_model_fp16.pth",
+        model_path,
         map_location="cpu",
         weights_only=True
     )
@@ -90,9 +101,7 @@ def load_model():
         checkpoint["model_state_dict"]
     )
 
-    # Convert model parameters to FP32 for CPU inference
     model = model.float()
-
     model.to(device)
     model.eval()
 
@@ -103,7 +112,7 @@ try:
     model, classes = load_model()
 
 except Exception as error:
-    st.error(f"Unable to load the trained model: {error}")
+    st.error(f"Unable to load trained model: {error}")
     st.stop()
 
 
@@ -121,10 +130,17 @@ transform = transforms.Compose([
 
 # Face Detection Model
 
-face_detector = cv2.CascadeClassifier(
-    cv2.data.haarcascades +
+cascade_path = os.path.join(
+    os.path.dirname(cv2.__file__),
+    "data",
     "haarcascade_frontalface_default.xml"
 )
+
+face_detector = cv2.CascadeClassifier(cascade_path)
+
+if face_detector.empty():
+    st.error("OpenCV face detection classifier could not be loaded.")
+    st.stop()
 
 
 # Mask Classification
@@ -142,7 +158,7 @@ def predict_mask(face):
         pil_image
     ).unsqueeze(0).to(device)
 
-    with torch.no_grad():
+    with torch.inference_mode():
 
         outputs = model(input_tensor)
 
@@ -154,7 +170,6 @@ def predict_mask(face):
         confidence, prediction = probabilities.max(dim=1)
 
     predicted_class = classes[prediction.item()]
-
     confidence_score = confidence.item() * 100
 
     return predicted_class, confidence_score
